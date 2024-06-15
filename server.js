@@ -31,9 +31,6 @@ const mongoose = require('mongoose');
 mongoose.connect('mongodb+srv://Admin:SquareMealPassword@clustersquaremeal.v1fj3lo.mongodb.net/SquareMeal?retryWrites=true&w=majority&appName=ClusterSquareMeal').then(() => console.log('Connected to MongoDB!'));
 
 var cors = require('cors');
-const { log } = require('console');
-const { isBooleanObject } = require('util/types');
-const { type } = require('os');
 app.use(cors())
 
 
