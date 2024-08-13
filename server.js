@@ -6,7 +6,10 @@ const bcrypt = require('bcrypt');
 const DIR = "public/ProductUploads";
 const uuid = require('uuid');
 var jwt = require('jsonwebtoken');
-require('dotenv').config()
+require('dotenv').config();
+
+const stripe = require('stripe')('sk_test_51PeNSZ2MxhGlI8NvkCCWjAevnHh8PfQydrzmeBk7iqFe0Ko1z5WEXSxzzV7bnHWWolzAtex8izyrBuOR5zpn2Kgy004OC7GYy5');
+
 
 
 var picname;
@@ -31,6 +34,7 @@ const mongoose = require('mongoose');
 mongoose.connect('mongodb+srv://Admin:SquareMealPassword@clustersquaremeal.v1fj3lo.mongodb.net/SquareMeal?retryWrites=true&w=majority&appName=ClusterSquareMeal').then(() => console.log('Connected to MongoDB!'));
 
 var cors = require('cors');
+const { useEffect } = require('react');
 app.use(cors())
 
 
@@ -57,6 +61,13 @@ var PostSchema = new mongoose.Schema(
     isDelected:{type:Boolean, default:false},
 },{versionKey:false})
 
+var addToCartSchema = new mongoose.Schema(
+    {Post:{type:String,require:true},
+    User:{type:String,require:true},
+    Quantity:{type:Number,require:true},
+    addedAt:{type:Date,require:true, default:Date.now, expireAfterSeconds : 120},
+    UptoTime:{type:Date,require:true},
+},{versionKey:false})
 
 
 
@@ -68,6 +79,8 @@ const productModel = mongoose.model("Product", productSchema, "Product");
 
 const postModel = mongoose.model("Supporter Post", PostSchema, "Supporter Post");
 
+const cartModel = mongoose.model("User Cart", addToCartSchema, "User Cart");
+
 
 
 const transporter = nodemailer.createTransport({
@@ -78,7 +91,21 @@ const transporter = nodemailer.createTransport({
     },
 });
 
+var cartinfoSend=async()=>
+{
+    
+    // var User;
+    // io.on('user', user =>
+    // {
+    //     User = user._id;
+    // })
+    // console.log(User)
+    // const result = await cartModel.find({User});
+    // console.log(result)
+}
+cartinfoSend();
 
+// cartinfoSend();
 
 app.listen(9000, () => {
     console.log('app is running on port 3000');
@@ -333,3 +360,137 @@ app.post('/api/fetchposts', async(req,res)=>
         res.send({statuscode:1,membsdata:result});
     }
 })
+
+app.post('/api/fetchActivePosts', async(req,res)=>
+{
+    const result = await postModel.find({ publishStatus: true});
+    if(result.length===0)
+    {
+        res.send({statuscode:0});
+    }
+    else
+    {
+        res.send({statuscode:1,membsdata:result});
+    }
+})
+
+app.post('/api/ActiveProductsAll', async(req,res)=>
+    {
+        const result = await productModel.find({ isActive:true }).select('Title Price Image').sort({ createdAt: -1 });
+        if(result.length===0)
+        {
+            res.send({statuscode:0});
+        }
+        else
+        {
+            res.send({statuscode:1,membsdata:result});
+        }
+})
+
+app.post('/api/add-to-cart', async(req,res)=>
+{
+    var Post = req.body.Post;
+    var User = req.body.User;
+    const Quantity = req.body.Quantity;
+    const UptoTime = req.body.UptoTime;
+    const verifyCart = await cartModel.find({Post,User});
+    if(verifyCart.length>0)
+    {
+        res.send({statuscode:2});
+    }
+    else
+    {
+        const newrecord = new cartModel({Post,User,Quantity,UptoTime});
+        result = await newrecord.save();
+        if(result.length===0)
+        {
+            res.send({statuscode:0});
+        }
+        else
+        {
+            res.send({statuscode:1,membsdata:result});
+        }
+    }
+    
+})
+
+
+app.post('/api/cart-data', async(req,res)=>
+    {
+        var User = req.body.User;
+        const result = await cartModel.find({User});
+        if(result.length===0)
+        {
+            res.send({statuscode:0});
+        }
+        else
+        {
+            res.send({statuscode:1,membsdata:result});
+        }
+})
+
+app.post('/api/post-data', async(req,res)=>
+    {
+        var Post = req.body.Post;
+        const result = await postModel.find({'_id' : Post});
+        if(result.length===0)
+        {
+            res.send({statuscode:0});
+        }
+        else
+        {
+            res.send({statuscode:1,membsdata:result});
+        }
+})
+
+app.post('/api/product-data', async(req,res)=>
+    {
+        var Products = req.body.Products;
+        const result = await productModel.find({'_id' : Products});
+        if(result.length===0)
+        {
+            res.send({statuscode:0});
+        }
+        else
+        {
+            res.send({statuscode:1,membsdata:result});
+        }
+})
+
+app.post('/api/create-checkout-session', async (req, res) => {
+    const price = Math.round(req.body.Price * 100)
+    const Product = req.body.Product;
+    const line_items = Product.map((product)=>({
+        product_data:{
+            name:product.Title,
+            description:product.Description,
+            images:product.Image,
+        },
+    }));
+    const session = await stripe.checkout.sessions.create({
+      line_items: [
+        {
+          // Provide the exact Price ID (for example, pr_1234) of the product you want to sell
+          price_data: {
+            unit_amount:price,
+            currency:'cad',
+            product_data:{
+                name:Product[0].Title,
+                description:Product[0].Description,
+                images:[`https://squaremeal.vercel.app/ProductUploads/${Product[0].Image}`],
+            }
+          },
+          quantity: 1,
+        },
+      ],
+      mode: 'payment',
+      success_url: `${process.env.REACT_APP_SITE_URL}/`,
+      cancel_url: `${process.env.REACT_APP_SITE_URL}/`,
+    });
+  
+    res.send({statuscode:1,session:session.url});
+  });
+
+
+
+
